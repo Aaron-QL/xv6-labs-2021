@@ -197,7 +197,9 @@ UPROGS=\
 	$U/_pingpong\
 	$U/_primes\
 	$U/_find \
-	$U/_xargs
+	$U/_xargs\
+    $U/_trace \
+    $U/_sysinfotest
 
 
 
@@ -240,6 +242,9 @@ ph: notxv6/ph.c
 barrier: notxv6/barrier.c
 	gcc -o barrier -g -O2 $(XCFLAGS) notxv6/barrier.c -pthread
 endif
+
+gdb:
+	riscv64-unknown-elf-gdb kernel/kernel
 
 ifeq ($(LAB),lock)
 UPROGS += \
