@@ -432,3 +432,33 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+
+void do_vmprint(pagetable_t pgtbl, int depth) {
+    pte_t pte;
+    char *indent;
+    if (depth == 1) {
+        indent = " ..";
+    } else if (depth == 2) {
+        indent = " .. ..";
+    } else {
+        indent = " .. .. ..";
+    }
+    for (int i = 0; i < 512; i++) {
+        pte = pgtbl[i];
+        if (pte & PTE_V) {
+            printf("%s%d: pte %p pa %p\n", indent, i, pte, PTE2PA(pte));
+            if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) { // 非叶子节点
+                do_vmprint((pagetable_t)PTE2PA(pte), depth+1);
+            }
+        }
+    }
+}
+
+void vmprint(pagetable_t root) {
+    if (root == 0) {
+        return;
+    }
+    printf("page table %p\n", root);
+    do_vmprint(root, 1);
+}
