@@ -462,3 +462,28 @@ void vmprint(pagetable_t root) {
     printf("page table %p\n", root);
     do_vmprint(root, 1);
 }
+
+int vm_pgaccess(pagetable_t root, uint64 va, int n, uint64 bitmask_addr) {
+    if (n > 32) {
+        return -1;
+    }
+    uint64 tmp_buffer;
+    pte_t* pte;
+    for (int i = 0; i < n; i++) {
+        pte = walk(root, va + PGSIZE*i, 0);
+        if (pte == 0) {
+            return -1;
+        }
+        if ((*pte & PTE_V) == 0) {
+            return -1;
+        }
+        if ((*pte & PTE_U) == 0) {
+            return -1;
+        }
+        if (*pte & PTE_A) {
+            *pte = *pte & ~PTE_A;
+            tmp_buffer |= (1 << i);
+        }
+    }
+    return copyout(root, bitmask_addr, (char *) &tmp_buffer, sizeof(tmp_buffer));
+}

@@ -343,6 +343,14 @@ sfence_vma()
 #define PTE_W (1L << 2)
 #define PTE_X (1L << 3)
 #define PTE_U (1L << 4) // 1 -> user can access
+#define PTE_G (1L << 5) // global access
+#define PTE_A (1L << 6) // has accessed
+#define PTE_A_SHIFT 6
+#define PTE_ACCESSED(pte) (((pte) >> 6) & 1)
+
+#define SETBIT(x,y) x |= (1<<y)         //将X的第Y位置1
+#define CLRBIT(x,y) x &=~(1<<y)            //将X的第Y位清0
+
 
 // shift a physical address to the right place for a PTE.
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
