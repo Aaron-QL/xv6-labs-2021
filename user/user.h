@@ -1,3 +1,5 @@
+#include "../kernel/sysinfo.h"
+
 struct stat;
 struct rtcdate;
 
@@ -24,6 +26,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int trace(int);
+int sysinfo(struct sysinfo *);
 
 // ulib.c
 int stat(const char*, struct stat*);
