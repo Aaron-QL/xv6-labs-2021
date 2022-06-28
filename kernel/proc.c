@@ -144,6 +144,14 @@ found:
     return 0;
   }
 
+  // 为进程创建内核页表
+  p->kpagetable = kvmcreate();
+  if(p->kpagetable == 0){
+      freeproc(p);
+      release(&p->lock);
+      return 0;
+  }
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -167,6 +175,9 @@ freeproc(struct proc *p)
   }
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  if (p->kpagetable) {
+      kvmfree(p->kpagetable);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -473,7 +484,9 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        kvmswiatch(p->kpagetable);
         swtch(&c->context, &p->context);
+        kvminithart();
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.

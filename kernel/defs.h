@@ -172,6 +172,9 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 void            vmprint(pagetable_t);
 int             vm_pgaccess(pagetable_t, uint64, int, uint64);
+pagetable_t     kvmcreate(void);
+void            kvmswiatch(pagetable_t);
+void            kvmfree(pagetable_t kpagetable);
 
 // plic.c
 void            plicinit(void);

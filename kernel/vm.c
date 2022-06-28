@@ -22,6 +22,7 @@ kvmmake(void)
   pagetable_t kpgtbl;
 
   kpgtbl = (pagetable_t) kalloc();
+  printf("kpgt: %p\n", kernel_pagetable);
   memset(kpgtbl, 0, PGSIZE);
 
   // uart registers
@@ -63,6 +64,12 @@ kvminithart()
 {
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
+}
+
+void kvmswiatch(pagetable_t kpagetable)
+{
+    w_satp(MAKE_SATP(kpagetable));
+    sfence_vma();
 }
 
 // Return the address of the PTE in page table pagetable
@@ -197,6 +204,48 @@ uvmcreate()
     return 0;
   memset(pagetable, 0, PGSIZE);
   return pagetable;
+}
+
+void kvmmapkern(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+    if (mappages(pagetable, va, sz, pa, perm) != 0) {
+        panic("kvmmap");
+    }
+}
+
+pagetable_t kvmcreate()
+{
+    pagetable_t pagetable = uvmcreate();
+    if (pagetable == 0) {
+        return 0;
+    }
+
+    for (int i = 1; i < 512; i++) {
+        pagetable[i] = kernel_pagetable[i];
+    }
+
+    kvmmapkern(pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+    kvmmapkern(pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+    kvmmapkern(pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+    kvmmapkern(pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+    return pagetable;
+}
+
+void kvmfree(pagetable_t kpagetable)
+{
+    pte_t pte = kpagetable[0];
+    pagetable_t level1 = (pagetable_t) PTE2PA(pte);
+    for (int i = 0; i < 512; i++) {
+        pte_t pte = level1[i];
+        if (pte & PTE_V) {
+            uint64 level2 = PTE2PA(pte);
+            kfree((void *)level2);
+            level1[i] = 0;
+        }
+    }
+    kfree((void *)level1);
+    kfree((void *) kpagetable);
 }
 
 // Load the user initcode into address 0 of pagetable,
@@ -447,7 +496,7 @@ void do_vmprint(pagetable_t pgtbl, int depth) {
     for (int i = 0; i < 512; i++) {
         pte = pgtbl[i];
         if (pte & PTE_V) {
-            printf("%s%d: pte %p pa %p\n", indent, i, pte, PTE2PA(pte));
+            printf("%s%d: pte %p pa %p binary %p\n", indent, i, pte, PTE2PA(pte), pte & 0xff);
             if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) { // 非叶子节点
                 do_vmprint((pagetable_t)PTE2PA(pte), depth+1);
             }
