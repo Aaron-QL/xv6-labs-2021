@@ -275,6 +275,9 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  // 将用户进程地址空间映射到用户内核页表当中
+  kvmmapuser(p->kpagetable, p->pagetable, p->sz, 0);
+
   release(&p->lock);
 }
 
@@ -294,6 +297,7 @@ growproc(int n)
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
+  kvmmapuser(p->kpagetable, p->pagetable, sz, p->sz);
   p->sz = sz;
   return 0;
 }
@@ -319,6 +323,10 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
+
+
+  // 将新用户进程地址空间映射到用户内核页表当中
+  kvmmapuser(np->kpagetable, np->pagetable, np->sz, 0);
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);

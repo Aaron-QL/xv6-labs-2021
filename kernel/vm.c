@@ -496,7 +496,8 @@ void do_vmprint(pagetable_t pgtbl, int depth) {
     for (int i = 0; i < 512; i++) {
         pte = pgtbl[i];
         if (pte & PTE_V) {
-            printf("%s%d: pte %p pa %p binary %p\n", indent, i, pte, PTE2PA(pte), pte & 0xff);
+//            printf("%s%d: pte %p pa %p binary %p\n", indent, i, pte, PTE2PA(pte), pte & 0xff);
+            printf("%s%d: pte %p pa %p\n", indent, i, pte, PTE2PA(pte));
             if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) { // 非叶子节点
                 do_vmprint((pagetable_t)PTE2PA(pte), depth+1);
             }
@@ -535,4 +536,40 @@ int vm_pgaccess(pagetable_t root, uint64 va, int n, uint64 bitmask_addr) {
         }
     }
     return copyout(root, bitmask_addr, (char *) &tmp_buffer, sizeof(tmp_buffer));
+}
+
+void kvmmapuser(pagetable_t kpagetable, pagetable_t upagetable, uint64 newsz, uint64 oldsz)
+{
+    uint64 va;
+    pte_t *upte;
+    pte_t *kpte;
+
+    if (newsz >= PLIC) {
+        panic("kvmmapuser: newsz too large");
+    }
+
+    for (va = oldsz; va < newsz; va += PGSIZE) {
+        upte = walk(upagetable, va, 0);
+        if (upte == 0) {
+            printf("kvmmapuser: 0x%x 0x%x\n", va, newsz);
+            panic("kvmmapuser: no upte");
+        }
+        if ((*upte & PTE_V) == 0) {
+            printf("kvmmapuser: no valid pte 0x%x 0x%x\n", va, newsz);
+            panic("kvmmapuser: no valid upte");
+        }
+
+        kpte = walk(kpagetable, va, 1);
+        if (kpte == 0) {
+            panic("kvmmapuser: no kpte");
+        }
+        *kpte = *upte;
+        *kpte &= ~(PTE_U | PTE_W | PTE_X);
+    }
+
+    for(va = newsz; va < oldsz; va += PGSIZE){
+        if((kpte = walk(kpagetable, va, 1)) == 0)
+            panic("setupuvm2kvm: kpte should exist");
+        *kpte &= ~PTE_V;
+    }
 }
