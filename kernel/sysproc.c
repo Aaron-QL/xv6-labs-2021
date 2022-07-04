@@ -7,27 +7,30 @@
 #include "spinlock.h"
 #include "proc.h"
 
-
 uint64 sys_sigalarm(void)
 {
-    struct proc* p = myproc();
-    if (argint(0, &p->alarm_interval) < 0 || argaddr(1, (uint64*)&p->alarm_handler)) {
-        return -1;
-    }
-    return 0;
+  struct proc *p = myproc();
+  if (argint(0, &p->alarm_interval) < 0 || argaddr(1, (uint64 *)&p->alarm_handler))
+  {
+	return -1;
+  }
+  return 0;
 }
 
 uint64 sys_sigreturn(void)
 {
-    return 0;
+  struct proc *p = myproc();
+  memmove(p->trapframe, p->alarm_frame, sizeof(struct trapframe));
+  p->is_alarming = 0;
+  return 0;
 }
 
 uint64
 sys_exit(void)
 {
   int n;
-  if(argint(0, &n) < 0)
-    return -1;
+  if (argint(0, &n) < 0)
+	return -1;
   exit(n);
   return 0;  // not reached
 }
@@ -48,8 +51,8 @@ uint64
 sys_wait(void)
 {
   uint64 p;
-  if(argaddr(0, &p) < 0)
-    return -1;
+  if (argaddr(0, &p) < 0)
+	return -1;
   return wait(p);
 }
 
@@ -59,31 +62,33 @@ sys_sbrk(void)
   int addr;
   int n;
 
-  if(argint(0, &n) < 0)
-    return -1;
+  if (argint(0, &n) < 0)
+	return -1;
   addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  if (growproc(n) < 0)
+	return -1;
   return addr;
 }
 
 uint64
 sys_sleep(void)
 {
-    backtrace();
+  backtrace();
   int n;
   uint ticks0;
 
-  if(argint(0, &n) < 0)
-    return -1;
+  if (argint(0, &n) < 0)
+	return -1;
   acquire(&tickslock);
   ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(myproc()->killed){
-      release(&tickslock);
-      return -1;
-    }
-    sleep(&ticks, &tickslock);
+  while (ticks - ticks0 < n)
+  {
+	if (myproc()->killed)
+	{
+	  release(&tickslock);
+	  return -1;
+	}
+	sleep(&ticks, &tickslock);
   }
   release(&tickslock);
   return 0;
@@ -94,8 +99,8 @@ sys_kill(void)
 {
   int pid;
 
-  if(argint(0, &pid) < 0)
-    return -1;
+  if (argint(0, &pid) < 0)
+	return -1;
   return kill(pid);
 }
 

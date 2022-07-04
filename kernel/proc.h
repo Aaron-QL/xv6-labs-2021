@@ -92,9 +92,6 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-  int alarm_interval;          // Alarm interval
-  int ticks_count;             // how many ticks have passed since the last call
-  void (*alarm_handler)();     // Alarm handler
 
 
   // wait_lock must be held when using this:
@@ -109,4 +106,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int alarm_interval;          // Alarm interval
+  int ticks_count;             // how many ticks have passed since the last call
+  void (*alarm_handler)();     // Alarm handler
+  struct trapframe *alarm_frame; // A copy of trapframe
+  int is_alarming;
 };
