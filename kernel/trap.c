@@ -48,20 +48,19 @@ usertrap(void) {
   p->trapframe->epc = r_sepc();
 
   if (r_scause() == 8) {
-	// system call
+	  // system call
+    if (p->killed)
+      exit(-1);
 
-	if (p->killed)
-	  exit(-1);
+    // sepc points to the ecall instruction,
+    // but we want to return to the next instruction.
+    p->trapframe->epc += 4;
 
-	// sepc points to the ecall instruction,
-	// but we want to return to the next instruction.
-	p->trapframe->epc += 4;
+    // an interrupt will change sstatus &c registers,
+    // so don't enable until done with those registers.
+    intr_on();
 
-	// an interrupt will change sstatus &c registers,
-	// so don't enable until done with those registers.
-	intr_on();
-
-	syscall();
+    syscall();
   } else if ((which_dev = devintr()) != 0) {
 	// ok
   } else {
@@ -80,15 +79,16 @@ usertrap(void) {
 				goto Trial;
 			}
 			uint64 va = PGROUNDDOWN(trap_val); // 计算虚拟地址那一页的首地址
-			uint64 pa = (uint64)kalloc(); // 分配一个物理页
+			void *pa = kalloc(); // 分配一个物理页
 			if (pa == 0) {
 				printf("kalloc failed\n");
 				p->killed = 1;
 				goto Trial;
 			}
 			memset((void *)pa, 0, PGSIZE);
-			if (mappages(p->pagetable, va, PGSIZE, pa, PTE_U|PTE_R|PTE_W) != 0) { // 映射
+			if (mappages(p->pagetable, va, PGSIZE, (uint64)pa, PTE_U|PTE_R|PTE_W) != 0) { // 映射
 				printf("mappages failed\n");
+        kfree(pa);
 				p->killed = 1;
 				goto Trial;
 			}

@@ -165,9 +165,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+			continue; // 因为启用了懒分配，有的虚拟地址并没有于物理地址做映射
     if((*pte & PTE_V) == 0)
-			continue;
+			continue; // 两个continue的原因：http://xv6.dgs.zone/labs/answers/lab5.html
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -292,9 +292,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+			continue; // 因为启用了懒分配，会有找不到pte的情况
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+			continue; // 两个continue的原因：http://xv6.dgs.zone/labs/answers/lab5.html
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)

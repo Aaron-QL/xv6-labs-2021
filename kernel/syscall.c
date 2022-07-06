@@ -62,8 +62,26 @@ argint(int n, int *ip) {
 // copyin/copyout will do that.
 int
 argaddr(int n, uint64 *ip) {
-  *ip = argraw(n);
-  return 0;
+	*ip = argraw(n);
+	struct proc *p = myproc();
+
+	// 处理向系统调用传入lazy allocation地址的情况
+	if (walkaddr(p->pagetable, *ip) == 0) {
+		if (*ip < PGROUNDUP(p->sz) || *ip >= p->sz) {
+			return -1;
+		}
+    void *pa = kalloc();
+    if (pa == 0) {
+      return -1;
+    }
+    memset(pa, 0, PGSIZE);
+    uint64 va = PGROUNDDOWN(*ip);
+    if (mappages(p->pagetable, va, PGSIZE, (uint64 )pa, PTE_U|PTE_R|PTE_W) == 0) {
+      kfree(pa);
+      return -1;
+    }
+	}
+	return 0;
 }
 
 // Fetch the nth word-sized system call argument as a null-terminated string.
