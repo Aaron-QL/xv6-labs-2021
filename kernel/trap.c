@@ -65,25 +65,53 @@ usertrap(void) {
   } else if ((which_dev = devintr()) != 0) {
 	// ok
   } else {
-	printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-	printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-	p->killed = 1;
+		uint64 cause = r_scause(); // 产生页故障的原因
+		uint64 trap_val = r_stval(); // 产生页故障的虚拟地址
+		printf("usertrap(): unexpected scause %p pid=%d spec %p stval %p\n", cause, p->pid, r_sepc(), trap_val);
+
+		// 13: Load page fault
+		// 15: Store/AMO page fault
+		if ((cause == 13 || cause == 15)) {
+			uint64 heap_bottom = PGROUNDUP(p->trapframe->sp); // 堆在栈的上方，栈只占用一页内存，通过对栈指针向上取整可以获取堆底的地址
+			printf("heap bottom %p heap top %p\n", heap_bottom, p->sz);
+			if (trap_val < heap_bottom || trap_val >= p->sz) { // 判断读写的地址是否超出堆内存的范围
+				printf("trap_val out of range\n");
+				p->killed = 1;
+				goto Trial;
+			}
+			uint64 va = PGROUNDDOWN(trap_val); // 计算虚拟地址那一页的首地址
+			uint64 pa = (uint64)kalloc(); // 分配一个物理页
+			if (pa == 0) {
+				printf("kalloc failed\n");
+				p->killed = 1;
+				goto Trial;
+			}
+			memset((void *)pa, 0, PGSIZE);
+			if (mappages(p->pagetable, va, PGSIZE, pa, PTE_U|PTE_R|PTE_W) != 0) { // 映射
+				printf("mappages failed\n");
+				p->killed = 1;
+				goto Trial;
+			}
+			goto Trial;
+		}
+		p->killed = 1;
   }
 
+Trial:
   if (p->killed)
 	exit(-1);
 
   // give up the CPU if this is a timer interrupt.
   if (which_dev == 2) {
-	if ((p->alarm_interval != 0) && (++p->ticks_count >= p->alarm_interval) && (p->is_alarming == 0)) {
-	  // 保存寄存器内容
-	  memmove(p->alarm_frame, p->trapframe, sizeof(struct trapframe));
-	  // 更改陷阱帧中保留的程序计数器，注意一定要在保存寄存器内容后再设置epc
-	  p->trapframe->epc = (uint64)p->alarm_handler;
-	  p->ticks_count = 0;
-	  p->is_alarming = 1;
-	}
-	yield();
+		if ((p->alarm_interval != 0) && (++p->ticks_count >= p->alarm_interval) && (p->is_alarming == 0)) {
+			// 保存寄存器内容
+			memmove(p->alarm_frame, p->trapframe, sizeof(struct trapframe));
+			// 更改陷阱帧中保留的程序计数器，注意一定要在保存寄存器内容后再设置epc
+			p->trapframe->epc = (uint64)p->alarm_handler;
+			p->ticks_count = 0;
+			p->is_alarming = 1;
+		}
+		yield();
   }
 
   usertrapret();
