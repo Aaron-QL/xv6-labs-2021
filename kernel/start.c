@@ -18,8 +18,7 @@ extern void timervec();
 
 // entry.S jumps here in machine mode on stack0.
 void
-start()
-{
+start() {
   // set M Previous Privilege mode to Supervisor, for mret.
   unsigned long x = r_mstatus();
   x &= ~MSTATUS_MPP_MASK;
@@ -59,8 +58,7 @@ start()
 // which turns them into software interrupts for
 // devintr() in trap.c.
 void
-timerinit()
-{
+timerinit() {
   // each CPU has a separate source of timer interrupts.
   int id = r_mhartid();
 

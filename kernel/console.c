@@ -31,8 +31,7 @@
 // but not from write().
 //
 void
-consputc(int c)
-{
+consputc(int c) {
   if(c == BACKSPACE){
     // if the user typed backspace, overwrite with a space.
     uartputc_sync('\b'); uartputc_sync(' '); uartputc_sync('\b');
@@ -56,8 +55,7 @@ struct {
 // user write()s to the console go here.
 //
 int
-consolewrite(int user_src, uint64 src, int n)
-{
+consolewrite(int user_src, uint64 src, int n) {
   int i;
 
   for(i = 0; i < n; i++){
@@ -77,8 +75,7 @@ consolewrite(int user_src, uint64 src, int n)
 // or kernel address.
 //
 int
-consoleread(int user_dst, uint64 dst, int n)
-{
+consoleread(int user_dst, uint64 dst, int n) {
   uint target;
   int c;
   char cbuf;
@@ -133,8 +130,7 @@ consoleread(int user_dst, uint64 dst, int n)
 // wake up consoleread() if a whole line has arrived.
 //
 void
-consoleintr(int c)
-{
+consoleintr(int c) {
   acquire(&cons.lock);
 
   switch(c){
@@ -179,8 +175,7 @@ consoleintr(int c)
 }
 
 void
-consoleinit(void)
-{
+consoleinit(void) {
   initlock(&cons.lock, "cons");
 
   uartinit();

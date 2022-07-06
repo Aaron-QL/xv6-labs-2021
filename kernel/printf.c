@@ -26,8 +26,7 @@ static struct {
 static char digits[] = "0123456789abcdef";
 
 static void
-printint(int xx, int base, int sign)
-{
+printint(int xx, int base, int sign) {
   char buf[16];
   int i;
   uint x;
@@ -50,8 +49,7 @@ printint(int xx, int base, int sign)
 }
 
 static void
-printptr(uint64 x)
-{
+printptr(uint64 x) {
   int i;
   consputc('0');
   consputc('x');
@@ -61,8 +59,7 @@ printptr(uint64 x)
 
 // Print to the console. only understands %d, %x, %p, %s.
 void
-printf(char *fmt, ...)
-{
+printf(char *fmt, ...) {
   va_list ap;
   int i, c, locking;
   char *s;
@@ -115,8 +112,7 @@ printf(char *fmt, ...)
 }
 
 void
-panic(char *s)
-{
+panic(char *s) {
   pr.locking = 0;
   printf("panic: ");
   printf(s);
@@ -127,15 +123,13 @@ panic(char *s)
 }
 
 void
-printfinit(void)
-{
+printfinit(void) {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
 
 void
-backtrace(void)
-{
+backtrace(void) {
     // 读取当前帧指针
     uint64 fp = r_fp();
     while (PGROUNDUP(fp) - PGROUNDDOWN(fp) == PGSIZE) {

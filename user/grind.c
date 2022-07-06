@@ -14,8 +14,7 @@
 
 // from FreeBSD.
 int
-do_rand(unsigned long *ctx)
-{
+do_rand(unsigned long *ctx) {
 /*
  * Compute x = (7^5 * x) mod (2^31 - 1)
  * without overflowing 31 bits:
@@ -42,14 +41,12 @@ do_rand(unsigned long *ctx)
 unsigned long rand_next = 1;
 
 int
-rand(void)
-{
+rand(void) {
     return (do_rand(&rand_next));
 }
 
 void
-go(int which_child)
-{
+go(int which_child) {
   int fd = -1;
   static char buf[999];
   char *break0 = sbrk(0);
@@ -294,8 +291,7 @@ go(int which_child)
 }
 
 void
-iter()
-{
+iter() {
   unlink("a");
   unlink("b");
   
@@ -334,8 +330,7 @@ iter()
 }
 
 int
-main()
-{
+main() {
   while(1){
     int pid = fork();
     if(pid == 0){

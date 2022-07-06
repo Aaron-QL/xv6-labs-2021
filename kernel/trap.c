@@ -17,15 +17,13 @@ void kernelvec();
 extern int devintr();
 
 void
-trapinit(void)
-{
+trapinit(void) {
   initlock(&tickslock, "time");
 }
 
 // set up to take exceptions and traps while in the kernel.
 void
-trapinithart(void)
-{
+trapinithart(void) {
   w_stvec((uint64)kernelvec);
 }
 
@@ -34,8 +32,7 @@ trapinithart(void)
 // called from trampoline.S
 //
 void
-usertrap(void)
-{
+usertrap(void) {
   int which_dev = 0;
 
   if ((r_sstatus() & SSTATUS_SPP) != 0)
@@ -50,8 +47,7 @@ usertrap(void)
   // save user program counter.
   p->trapframe->epc = r_sepc();
 
-  if (r_scause() == 8)
-  {
+  if (r_scause() == 8) {
 	// system call
 
 	if (p->killed)
@@ -66,11 +62,9 @@ usertrap(void)
 	intr_on();
 
 	syscall();
-  } else if ((which_dev = devintr()) != 0)
-  {
+  } else if ((which_dev = devintr()) != 0) {
 	// ok
-  } else
-  {
+  } else {
 	printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
 	printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
 	p->killed = 1;
@@ -80,10 +74,8 @@ usertrap(void)
 	exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if (which_dev == 2)
-  {
-	if ((p->alarm_interval != 0) && (++p->ticks_count >= p->alarm_interval) && (p->is_alarming == 0))
-	{
+  if (which_dev == 2) {
+	if ((p->alarm_interval != 0) && (++p->ticks_count >= p->alarm_interval) && (p->is_alarming == 0)) {
 	  // 保存寄存器内容
 	  memmove(p->alarm_frame, p->trapframe, sizeof(struct trapframe));
 	  // 更改陷阱帧中保留的程序计数器，注意一定要在保存寄存器内容后再设置epc
@@ -101,8 +93,7 @@ usertrap(void)
 // return to user space
 //
 void
-usertrapret(void)
-{
+usertrapret(void) {
   struct proc *p = myproc();
 
   // we're about to switch the destination of traps from
@@ -145,8 +136,7 @@ usertrapret(void)
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
 void
-kerneltrap()
-{
+kerneltrap() {
   int which_dev = 0;
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
@@ -157,8 +147,7 @@ kerneltrap()
   if (intr_get() != 0)
 	panic("kerneltrap: interrupts enabled");
 
-  if ((which_dev = devintr()) == 0)
-  {
+  if ((which_dev = devintr()) == 0) {
 	printf("scause %p\n", scause);
 	printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
 	panic("kerneltrap");
@@ -175,8 +164,7 @@ kerneltrap()
 }
 
 void
-clockintr()
-{
+clockintr() {
   acquire(&tickslock);
   ticks++;
   wakeup(&ticks);
@@ -189,26 +177,21 @@ clockintr()
 // 1 if other device,
 // 0 if not recognized.
 int
-devintr()
-{
+devintr() {
   uint64 scause = r_scause();
 
   if ((scause & 0x8000000000000000L) &&
-	  (scause & 0xff) == 9)
-  {
+	  (scause & 0xff) == 9) {
 	// this is a supervisor external interrupt, via PLIC.
 
 	// irq indicates which device interrupted.
 	int irq = plic_claim();
 
-	if (irq == UART0_IRQ)
-	{
+	if (irq == UART0_IRQ) {
 	  uartintr();
-	} else if (irq == VIRTIO0_IRQ)
-	{
+	} else if (irq == VIRTIO0_IRQ) {
 	  virtio_disk_intr();
-	} else if (irq)
-	{
+	} else if (irq) {
 	  printf("unexpected interrupt irq=%d\n", irq);
 	}
 
@@ -219,13 +202,11 @@ devintr()
 	  plic_complete(irq);
 
 	return 1;
-  } else if (scause == 0x8000000000000001L)
-  {
+  } else if (scause == 0x8000000000000001L) {
 	// software interrupt from a machine-mode timer interrupt,
 	// forwarded by timervec in kernelvec.S.
 
-	if (cpuid() == 0)
-	{
+	if (cpuid() == 0) {
 	  clockintr();
 	}
 
@@ -234,8 +215,7 @@ devintr()
 	w_sip(r_sip() & ~2);
 
 	return 2;
-  } else
-  {
+  } else {
 	return 0;
   }
 }

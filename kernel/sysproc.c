@@ -7,8 +7,7 @@
 #include "spinlock.h"
 #include "proc.h"
 
-uint64 sys_sigalarm(void)
-{
+uint64 sys_sigalarm(void) {
   struct proc *p = myproc();
   if (argint(0, &p->alarm_interval) < 0 || argaddr(1, (uint64 *)&p->alarm_handler))
   {
@@ -17,8 +16,7 @@ uint64 sys_sigalarm(void)
   return 0;
 }
 
-uint64 sys_sigreturn(void)
-{
+uint64 sys_sigreturn(void) {
   struct proc *p = myproc();
   memmove(p->trapframe, p->alarm_frame, sizeof(struct trapframe));
   p->is_alarming = 0;
@@ -26,8 +24,7 @@ uint64 sys_sigreturn(void)
 }
 
 uint64
-sys_exit(void)
-{
+sys_exit(void) {
   int n;
   if (argint(0, &n) < 0)
 	return -1;
@@ -36,20 +33,17 @@ sys_exit(void)
 }
 
 uint64
-sys_getpid(void)
-{
+sys_getpid(void) {
   return myproc()->pid;
 }
 
 uint64
-sys_fork(void)
-{
+sys_fork(void) {
   return fork();
 }
 
 uint64
-sys_wait(void)
-{
+sys_wait(void) {
   uint64 p;
   if (argaddr(0, &p) < 0)
 	return -1;
@@ -57,22 +51,20 @@ sys_wait(void)
 }
 
 uint64
-sys_sbrk(void)
-{
+sys_sbrk(void) {
   int addr;
   int n;
 
   if (argint(0, &n) < 0)
 	return -1;
-  addr = myproc()->sz;
-  if (growproc(n) < 0)
-	return -1;
+  struct proc *p = myproc();
+  addr = p->sz;
+  p->sz += n;
   return addr;
 }
 
 uint64
-sys_sleep(void)
-{
+sys_sleep(void) {
   backtrace();
   int n;
   uint ticks0;
@@ -95,8 +87,7 @@ sys_sleep(void)
 }
 
 uint64
-sys_kill(void)
-{
+sys_kill(void) {
   int pid;
 
   if (argint(0, &pid) < 0)
@@ -107,8 +98,7 @@ sys_kill(void)
 // return how many clock tick interrupts have occurred
 // since start.
 uint64
-sys_uptime(void)
-{
+sys_uptime(void) {
   uint xticks;
 
   acquire(&tickslock);

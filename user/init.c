@@ -12,8 +12,7 @@
 char *argv[] = { "sh", 0 };
 
 int
-main(void)
-{
+main(void) {
   int pid, wpid;
 
   if(open("console", O_RDWR) < 0){

@@ -19,8 +19,7 @@ void periodic();
 void slow_handler();
 
 int
-main(int argc, char *argv[])
-{
+main(int argc, char *argv[]) {
   test0();
   test1();
   test2();
@@ -30,8 +29,7 @@ main(int argc, char *argv[])
 volatile static int count;
 
 void
-periodic()
-{
+periodic() {
   count = count + 1;
   printf("alarm!\n");
   sigreturn();
@@ -40,8 +38,7 @@ periodic()
 // tests whether the kernel calls
 // the alarm handler even a single time.
 void
-test0()
-{
+test0() {
   int i;
   printf("test0 start\n");
   count = 0;
@@ -76,8 +73,7 @@ void __attribute__ ((noinline)) foo(int i, int *j) {
 // held when the interrupt occurred.
 //
 void
-test1()
-{
+test1() {
   int i;
   int j;
 
@@ -109,8 +105,7 @@ test1()
 //
 // tests that kernel does not allow reentrant alarm calls.
 void
-test2()
-{
+test2() {
   int i;
   int pid;
   int status;
@@ -141,8 +136,7 @@ test2()
 }
 
 void
-slow_handler()
-{
+slow_handler() {
   count++;
   printf("alarm!\n");
   if (count > 1) {

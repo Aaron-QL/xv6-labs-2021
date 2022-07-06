@@ -24,15 +24,13 @@ struct {
 } kmem;
 
 void
-kinit()
-{
+kinit() {
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
 }
 
 void
-freerange(void *pa_start, void *pa_end)
-{
+freerange(void *pa_start, void *pa_end) {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
@@ -44,8 +42,7 @@ freerange(void *pa_start, void *pa_end)
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
 void
-kfree(void *pa)
-{
+kfree(void *pa) {
   struct run *r;
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
@@ -66,8 +63,7 @@ kfree(void *pa)
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 void *
-kalloc(void)
-{
+kalloc(void) {
   struct run *r;
 
   acquire(&kmem.lock);
