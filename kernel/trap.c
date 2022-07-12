@@ -29,6 +29,42 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+int cowfault(pagetable_t pagetable, uint64 va)
+{
+  if (va >= MAXVA) {
+//    printf("va %p >= MAXVA\n", va);
+    return -1;
+  }
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0) {
+    printf("cowfault: pte == 0\n");
+    return -1;
+  }
+  if ((*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) {
+    printf("cowfault: invalid pte: %p\n", *pte);
+    return -1;
+  }
+  uint64 pa1 = PTE2PA(*pte);
+  uint8 refcount = getref(pa1);
+  if (refcount == 0) {
+    printf("cowfault: invalid refcount\n");
+    return -1;
+  } else if (refcount == 1) {
+    *pte |= PTE_W;
+    return 0;
+  }
+//  printf("cowfault: va: %p, pa1: %p, ref: %d\n", va, pa1, getref(pa1));
+  uint64 pa2 = (uint64 )kalloc();
+  if (pa2 == 0) {
+    printf("cowfault: kalloc failed\n");
+    return -1;
+  }
+  memmove((void *)pa2, (void *)pa1, PGSIZE);
+  *pte = PA2PTE(pa2) | PTE_V | PTE_U | PTE_R | PTE_W | PTE_X;
+  kfree((void *)pa1);
+  return 0;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -37,6 +73,7 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  uint64 sepc = r_sepc(), stval = r_stval(), scause = r_scause();
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -48,9 +85,9 @@ usertrap(void)
   struct proc *p = myproc();
   
   // save user program counter.
-  p->trapframe->epc = r_sepc();
+  p->trapframe->epc = sepc;
   
-  if(r_scause() == 8){
+  if (scause == 8) {
     // system call
 
     if(p->killed)
@@ -65,11 +102,19 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (scause == 0xf) { // 写故障
+    if (stval >= p->sz) {
+//      printf("stval %p >= p-sz %p\n", stval, p->sz);
+      p->killed = 1;
+    }
+    if (cowfault(p->pagetable, stval) < 0) {
+      p->killed = 1;
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    printf("usertrap(): unexpected scause %p pid=%d\n", scause, p->pid);
+    printf("            sepc=%p stval=%p\n", sepc, stval);
     p->killed = 1;
   }
 
