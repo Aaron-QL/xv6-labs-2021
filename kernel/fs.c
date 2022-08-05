@@ -68,15 +68,16 @@ balloc(uint dev)
   struct buf *bp;
 
   bp = 0;
-  for(b = 0; b < sb.size; b += BPB){
-    bp = bread(dev, BBLOCK(b, sb));
-    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
-      m = 1 << (bi % 8);
-      if((bp->data[bi/8] & m) == 0){  // Is block free?
+  for(b = 0; b < sb.size; b += BPB){ // b 表示在整个磁盘中以块为单位的偏移量（单位：位），每次遍历BPB个block，因为bitmap中的一个块对应了磁盘中的BPB个块
+    bp = bread(dev, BBLOCK(b, sb)); // BBLOCK(b, sb)定位b这个block在bitmap中对应的block，转换成buf存到bp中
+    // bi表示在一个bitmap中的block的偏移量，每次+1表示在bitmap中前进1位，也表示在磁盘中前进一个blcok
+    for(bi = 0; bi < BPB && b + bi < sb.size; bi++){ // 两层for循环结合起来就能遍历磁盘中的
+      m = 1 << (bi % 8); // m 定位bitmap中的位开关
+      if((bp->data[bi/8] & m) == 0){  // Is block free? bp->data[bi/8] 定位bitmap中的一个字节
         bp->data[bi/8] |= m;  // Mark block in use.
         log_write(bp);
         brelse(bp);
-        bzero(dev, b + bi);
+        bzero(dev, b + bi); // b + bi 定位一个block的编号
         return b + bi;
       }
     }
@@ -92,8 +93,8 @@ bfree(int dev, uint b)
   struct buf *bp;
   int bi, m;
 
-  bp = bread(dev, BBLOCK(b, sb));
-  bi = b % BPB;
+  bp = bread(dev, BBLOCK(b, sb)); //先获取b这个block在bitmap中对应的block
+  bi = b % BPB; //再计算b这个block在bp中对应的位
   m = 1 << (bi % 8);
   if((bp->data[bi/8] & m) == 0)
     panic("freeing free block");
@@ -171,6 +172,10 @@ bfree(int dev, uint b)
 // dev, and inum.  One must hold ip->lock in order to
 // read or write that inode's ip->valid, ip->size, ip->type, &c.
 
+// 引用一个inode使用iget/iput
+// 真正需要修改的时候使用iloc/iunlock
+//
+
 struct {
   struct spinlock lock;
   struct inode inode[NINODE];
@@ -200,14 +205,14 @@ ialloc(uint dev, short type)
   struct dinode *dip;
 
   for(inum = 1; inum < sb.ninodes; inum++){
-    bp = bread(dev, IBLOCK(inum, sb));
-    dip = (struct dinode*)bp->data + inum%IPB;
+    bp = bread(dev, IBLOCK(inum, sb)); // 获取inum所在的block
+    dip = (struct dinode*)bp->data + inum%IPB; // 计算出block中对应inum编号的inode地址
     if(dip->type == 0){  // a free inode
-      memset(dip, 0, sizeof(*dip));
+      memset(dip, 0, sizeof(*dip)); // 抹除inode中的原始数据
       dip->type = type;
-      log_write(bp);   // mark it allocated on the disk
+      log_write(bp);   // mark it allocated on the disk，在磁盘上标记这个dinode已分配
       brelse(bp);
-      return iget(dev, inum);
+      return iget(dev, inum); // 创建与dinode对应的inode并返回
     }
     brelse(bp);
   }
@@ -224,8 +229,8 @@ iupdate(struct inode *ip)
   struct buf *bp;
   struct dinode *dip;
 
-  bp = bread(ip->dev, IBLOCK(ip->inum, sb));
-  dip = (struct dinode*)bp->data + ip->inum%IPB;
+  bp = bread(ip->dev, IBLOCK(ip->inum, sb)); // 获取inode所在的block
+  dip = (struct dinode*)bp->data + ip->inum%IPB; // 获取block中与inode对应的dinode
   dip->type = ip->type;
   dip->major = ip->major;
   dip->minor = ip->minor;
