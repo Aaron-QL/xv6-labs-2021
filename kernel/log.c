@@ -33,8 +33,8 @@
 // Contents of the header block, used for both the on-disk header block
 // and to keep track in memory of logged block# before commit.
 struct logheader {
-  int n;
-  int block[LOGSIZE];
+  int n; // 表示未提交的block数量
+  int block[LOGSIZE]; // 数组中的每个值对应一个block编号
 };
 
 struct log {
@@ -84,7 +84,7 @@ install_trans(int recovering)
 
 // Read the log header from disk into the in-memory log header
 static void
-read_head(void)
+read_head(void) // 把磁盘上log header的数据维护到内存中
 {
   struct buf *buf = bread(log.dev, log.start);
   struct logheader *lh = (struct logheader *) (buf->data);
@@ -100,7 +100,7 @@ read_head(void)
 // This is the true point at which the
 // current transaction commits.
 static void
-write_head(void)
+write_head(void) // 把内存中的log header数据落盘
 {
   struct buf *buf = bread(log.dev, log.start);
   struct logheader *hb = (struct logheader *) (buf->data);
@@ -144,7 +144,7 @@ begin_op(void)
 // called at the end of each FS system call.
 // commits if this was the last outstanding operation.
 void
-end_op(void)
+end_op(void) // 结束一次文件系统的调用，如果所有的调用都结束了，则把这些多次改动一次性提交
 {
   int do_commit = 0;
 
@@ -176,7 +176,7 @@ end_op(void)
 
 // Copy modified blocks from cache to log.
 static void
-write_log(void)
+write_log(void) // 把数据从block的cache写到log的block中
 {
   int tail;
 
@@ -212,7 +212,7 @@ commit()
 //   log_write(bp)
 //   brelse(bp)
 void
-log_write(struct buf *b)
+log_write(struct buf *b) // 把一个被改写的block的编号写到log中
 {
   int i;
 
@@ -223,10 +223,10 @@ log_write(struct buf *b)
     panic("log_write outside of trans");
 
   for (i = 0; i < log.lh.n; i++) {
-    if (log.lh.block[i] == b->blockno)   // log absorption
+    if (log.lh.block[i] == b->blockno)   // log absorption 检查之前有没有写过这个block
       break;
   }
-  log.lh.block[i] = b->blockno;
+  log.lh.block[i] = b->blockno; // 如果没有，就追加写一个新的block号在block数组中
   if (i == log.lh.n) {  // Add new block to log?
     bpin(b);
     log.lh.n++;

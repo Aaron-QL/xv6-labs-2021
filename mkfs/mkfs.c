@@ -20,9 +20,12 @@
 // Disk layout:
 // [ boot block | sb block | log | inode blocks | free bit map | data blocks ]
 
-int nbitmap = FSSIZE/(BSIZE*8) + 1;
-int ninodeblocks = NINODES / IPB + 1;
-int nlog = LOGSIZE;
+// bitmap占用的块数量：
+// 一个bitmap的block就能记录BSIZE*8个block，而磁盘上总共有FSSIZE个block，所以bitmap需要的block数量就是FSSIZE/(BSIZE*8)，再向上取整
+int nbitmap = FSSIZE/(BSIZE*8) + 1; // 1000 / (1024 * 8) + 1 = 1
+// 所有inodes占用的块数量：总数 / 每个块能存储数量，向上取整
+int ninodeblocks = NINODES / IPB + 1; // 200 / 16 + 1 = 13
+int nlog = LOGSIZE; // 30
 int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap)
 int nblocks;  // Number of data blocks
 
@@ -90,17 +93,17 @@ main(int argc, char *argv[])
     die(argv[1]);
 
   // 1 fs block = 1 disk sector
-  nmeta = 2 + nlog + ninodeblocks + nbitmap;
-  nblocks = FSSIZE - nmeta;
+  nmeta = 2 + nlog + ninodeblocks + nbitmap; // 2 + 30 + 13 + 1 = 46
+  nblocks = FSSIZE - nmeta; // 1000 -46 = 954
 
   sb.magic = FSMAGIC;
-  sb.size = xint(FSSIZE);
-  sb.nblocks = xint(nblocks);
-  sb.ninodes = xint(NINODES);
-  sb.nlog = xint(nlog);
-  sb.logstart = xint(2);
-  sb.inodestart = xint(2+nlog);
-  sb.bmapstart = xint(2+nlog+ninodeblocks);
+  sb.size = xint(FSSIZE); // 1000 磁盘的总block数
+  sb.nblocks = xint(nblocks); // 954 磁盘用来存数据的blcok数
+  sb.ninodes = xint(NINODES); // 200 磁盘上dinode的数量
+  sb.nlog = xint(nlog); // 磁盘上处理log的block数
+  sb.logstart = xint(2); //log的第一个blog
+  sb.inodestart = xint(2+nlog); // inode的第一个block
+  sb.bmapstart = xint(2+nlog+ninodeblocks); // bitmap的第一个block
 
   printf("nmeta %d (boot, super, log blocks %u inode blocks %u, bitmap blocks %u) blocks %d total %d\n",
          nmeta, nlog, ninodeblocks, nbitmap, nblocks, FSSIZE);
