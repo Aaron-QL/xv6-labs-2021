@@ -101,7 +101,7 @@ virtio_disk_init(void)
   features &= ~(1 << VIRTIO_BLK_F_MQ);
   features &= ~(1 << VIRTIO_F_ANY_LAYOUT);
   features &= ~(1 << VIRTIO_RING_F_EVENT_IDX);
-  features &= ~(1 << VIRTIO_RING_F_INDIRECT_DESC);
+  features &= ~(1 << VIRTIO_RING_F_INDirect_DESC);
   *R(VIRTIO_MMIO_DRIVER_FEATURES) = features;
 
   // tell device that feature negotiation is complete.

@@ -40,7 +40,7 @@
 #define VIRTIO_BLK_F_CONFIG_WCE     11	/* Writeback mode available in config */
 #define VIRTIO_BLK_F_MQ             12	/* support more than one vq */
 #define VIRTIO_F_ANY_LAYOUT         27
-#define VIRTIO_RING_F_INDIRECT_DESC 28
+#define VIRTIO_RING_F_INDirect_DESC 28
 #define VIRTIO_RING_F_EVENT_IDX     29
 
 // this many virtio descriptors.

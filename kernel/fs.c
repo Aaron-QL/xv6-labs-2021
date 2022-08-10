@@ -373,9 +373,9 @@ iunlockput(struct inode *ip)
 // Inode content
 //
 // The content (data) associated with each inode is stored
-// in blocks on the disk. The first NDIRECT block numbers
-// are listed in ip->addrs[].  The next NINDIRECT blocks are
-// listed in block ip->addrs[NDIRECT].
+// in blocks on the disk. The first NDirect block numbers
+// are listed in ip->addrs[].  The next NSingleIndirect blocks are
+// listed in block ip->addrs[NDirect].
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
@@ -385,22 +385,54 @@ bmap(struct inode *ip, uint bn)
   uint addr, *a;
   struct buf *bp;
 
-  if(bn < NDIRECT){
-    if((addr = ip->addrs[bn]) == 0)
-      ip->addrs[bn] = addr = balloc(ip->dev);
+  //处理直接引用
+  if(bn < NDirect){
+    if((addr = ip->addrs[bn]) == 0) {
+      ip->addrs[bn] = addr = balloc(ip->dev); // 分配目标块
+    }
     return addr;
   }
-  bn -= NDIRECT;
+  bn -= NDirect;
 
-  if(bn < NINDIRECT){
+  // 一级间接引用
+  if(bn < NSingleIndirect){
     // Load indirect block, allocating if necessary.
-    if((addr = ip->addrs[NDIRECT]) == 0)
-      ip->addrs[NDIRECT] = addr = balloc(ip->dev);
-    bp = bread(ip->dev, addr);
+    if((addr = ip->addrs[NDirect]) == 0) {
+      ip->addrs[NDirect] = addr = balloc(ip->dev); // 分配一级块，这里不需要更新ip所在的block，因为bmap可能用来读或写，只有写的时候才需要（调用者要调用iupdate）
+    }
+    bp = bread(ip->dev, addr); // 读取一级块
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
-      a[bn] = addr = balloc(ip->dev);
-      log_write(bp);
+      a[bn] = addr = balloc(ip->dev); // 分配目标块
+      log_write(bp); // 因为分配了新目标块，要把这次创建操作更新到父节点里
+    }
+    brelse(bp);
+    return addr;
+  }
+  bn -= NSingleIndirect;
+
+  // 二级间接引用
+  if (bn < NDoublyIndirect) {
+    uint nextIndex = NDirect+1; // 计算一级引用块的地址在零级块中的索引
+    if ((addr = ip->addrs[nextIndex]) == 0) {
+      ip->addrs[nextIndex] = addr = balloc(ip->dev); // 分配一级块，这里不需要标记父节点，由调用方决定是否更新
+    }
+
+    bp = bread(ip->dev, addr); // 读取一级引用块
+    a = (uint*)bp->data;
+    nextIndex = bn / NADDR_PER_BLOCK; // 计算二级引用块的地址在一级引用块中的索引
+    if ((addr = a[nextIndex]) == 0) {
+      a[nextIndex] = addr = balloc(ip->dev); // 分配二级块，产生了写操作，就需要更新父节点
+      log_write(bp); // 标记以供后续写会磁盘
+    }
+    brelse(bp);
+
+    bp = bread(ip->dev, addr); // 读取二级引用级块
+    a = (uint*)bp->data;
+    nextIndex = bn % NADDR_PER_BLOCK; // 计算目标块的地址在二级引用块中的索引
+    if ((addr = a[nextIndex]) == 0) {
+      a[nextIndex] = addr = balloc(ip->dev); // 分配目标块，产生了写操作，就需要更新父节点
+      log_write(bp); // 标记以供后续写会磁盘
     }
     brelse(bp);
     return addr;
@@ -414,27 +446,48 @@ bmap(struct inode *ip, uint bn)
 void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
+  int i, j, k;
+  struct buf *bp, *bp2;
+  uint *a, *b;
 
-  for(i = 0; i < NDIRECT; i++){
+  for(i = 0; i < NDirect; i++){
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
       ip->addrs[i] = 0;
     }
   }
 
-  if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
+  if(ip->addrs[NDirect]){
+    bp = bread(ip->dev, ip->addrs[NDirect]);
     a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
+    for(j = 0; j < NSingleIndirect; j++){
       if(a[j])
         bfree(ip->dev, a[j]);
     }
     brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
-    ip->addrs[NDIRECT] = 0;
+    bfree(ip->dev, ip->addrs[NDirect]);
+    ip->addrs[NDirect] = 0;
+  }
+
+  if(ip->addrs[NDirect+1]) {
+    bp = bread(ip->dev, ip->addrs[NDirect+1]);
+    a = (uint*)bp->data;
+    for(j = 0; j < NSingleIndirect; j++){
+      if(a[j]) {
+        bp2 = bread(ip->dev, a[j]);
+        b = (uint*)bp2->data;
+        for(k = 0; k < NSingleIndirect; k++){
+          if(b[k]) {
+            bfree(ip->dev, b[k]);
+          }
+        }
+        brelse(bp2);
+        bfree(ip->dev, a[j]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDirect+1]);
+    ip->addrs[NDirect+1] = 0;
   }
 
   ip->size = 0;
@@ -500,7 +553,8 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
     return -1;
 
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
-    bp = bread(ip->dev, bmap(ip, off/BSIZE));
+    uint idx = bmap(ip, off/BSIZE);
+    bp = bread(ip->dev, idx);
     m = min(n - tot, BSIZE - off%BSIZE);
     if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
       brelse(bp);
