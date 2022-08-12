@@ -7,7 +7,7 @@
 #include "kernel/sleeplock.h"
 #include "kernel/fs.h"
 #include "kernel/file.h"
-#include "user/user.h"
+#include "user.h"
 
 #define fail(msg) do {printf("FAILURE: " msg "\n"); failed = 1; goto done;} while (0);
 static int failed = 0;

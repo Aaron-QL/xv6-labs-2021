@@ -283,6 +283,41 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+
+// Create the path `link` as a symbol link to the path target.
+int sys_symlink(void)
+{
+  char link[MAXPATH], target[MAXPATH], name[DIRSIZ];
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, link, MAXPATH) < 0) {
+    return -1;
+  }
+  struct inode *dp, *ip;
+
+  begin_op();
+  if ((dp = nameiparent(link, name)) == 0) {// 拿dp是为了获取磁盘的major和minor
+    end_op();
+    return -1;
+  }
+  if ((ip = create(link, T_SYMLINK, dp->major, dp->minor)) == 0) {// 创建链接文件
+    end_op();
+    return -1;
+  }
+  int n = strlen(target);
+  if (n >= MAXPATH) {
+    end_op();
+    return -1;
+  }
+  if (writei(ip, 0, (uint64)target, 0, n) != n) {
+    // todo: 如果这一步失败了，需要删除上面创建的文件
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  iunlockput(ip);
+  end_op();
+  return 0;
+}
+
 uint64
 sys_open(void)
 {
@@ -297,16 +332,43 @@ sys_open(void)
 
   begin_op();
 
-  if(omode & O_CREATE){
+  if(omode & O_CREATE){ // 创建文件
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
       return -1;
     }
-  } else {
+  } else { // 打开文件
     if((ip = namei(path)) == 0){
       end_op();
       return -1;
+    }
+    if (ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0) { // 处理符号链接文件
+      struct inode *original = ip;
+      int i;
+      char target[MAXPATH];
+      for (i = 0; i < 10; i++) { // 最多链接10次
+        memset(target, 0, MAXPATH);
+        if (readi(ip, 0, (uint64)target, 0, DIRSIZ) <= 0) { // 读链接文件内容
+          end_op();
+          return -1;
+        }
+        if((ip = namei(target)) == 0){ // 打开链接文件
+          end_op();
+          return -1;
+        }
+        if (ip == original) { // 判断是否存在链接环
+          end_op();
+          return -1;
+        }
+        if (ip->type != T_SYMLINK) {
+          break;
+        }
+      }
+      if (i == 10) {
+        end_op();
+        return -1;
+      }
     }
     ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
