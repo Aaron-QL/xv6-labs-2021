@@ -5,6 +5,12 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
 
 struct cpu cpus[NCPU];
 
@@ -25,6 +31,177 @@ extern char trampoline[]; // trampoline.S
 // memory model when using p->parent.
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
+
+uint64 mmap(void *addr, int len, int prot, int flags, int fd, int offset, struct file* f)
+{
+  // 检查参数是否合法
+  if (addr != 0 || len < 0 || offset != 0 || f == 0 || len % PGSIZE != 0 ||
+    (prot & (PROT_READ | PROT_WRITE)) == 0 || (flags & (MAP_PRIVATE | MAP_SHARED)) == 0) {
+    printf("mmap: param invalid\n");
+    return -1;
+  }
+  // 检查读权限
+  if (prot&PROT_READ && f->readable==0) {
+    printf("mmap: file not readable\n");
+    return -1;
+  }
+  // 共享模式需要检查写权限
+  if (prot&PROT_WRITE && flags & MAP_SHARED && f->writable == 0) {
+    printf("mmap: file not writable\n");
+    return -1;
+  }
+
+  struct proc* p = myproc();
+  if (p->sz + len > MAXVA) { // 检查映射边界是否溢出
+    printf("p->sz %d + len %d > MAXVA\n", p->sz, len, MAXVA);
+    return -1;
+  }
+
+  for (int i = 0; i < NVMA; i++) { // 找一个空的vma并分配
+    if (p->vmatable[i].used == 0) {
+      p->vmatable[i].used = 1;
+      p->vmatable[i].addr = p->sz;
+      p->vmatable[i].original_addr = p->sz;
+      p->vmatable[i].len = len;
+      p->vmatable[i].prot = prot;
+      p->vmatable[i].flags = flags;
+      p->vmatable[i].f = f;
+      p->vmatable[i].offset = 0;
+      filedup(f);
+      p->sz += len;
+//      printf("=> mmap: addr: %p, npages: %d\n", p->vmatable[i].addr, len/PGSIZE);
+      return p->vmatable[i].addr;
+    }
+  }
+
+  printf("no free vma space\n");
+  return -1;
+}
+
+int mmap_handler(uint64 addr, int cause)
+{
+  int i = 0;
+  struct proc* p = myproc();
+  for (; i < NVMA; i++) { // 查找对应的映射
+    if (p->vmatable[i].used && addr >= p->vmatable[i].addr && addr < p->vmatable[i].addr + p->vmatable[i].len) {
+      break;
+    }
+  }
+  if (i == NVMA) {
+    printf("mapping not found\n");
+    return -1;
+  }
+  struct vma* vma = &p->vmatable[i];
+  if (cause == 13 && (vma->prot & PROT_READ) == 0) {// 检查读权限
+    printf("invalid read permission\n");
+    return -1;
+  }
+  if (cause == 13 && vma->f->readable == 0) {
+    return -1;
+  }
+  if (cause == 15 && (vma->prot & PROT_WRITE) == 0) {// 检查写权限
+    printf("invalid write permission\n");
+    return -1;
+  }
+  if (cause == 15 && vma->f->writable == 0) {
+    return -1;
+  }
+
+  uint64 pa = (uint64)kalloc(); // 分配物理页
+  memset((void *)pa, 0, PGSIZE);
+  int va = PGROUNDDOWN(addr); // 计算虚拟页的起始地址
+  int file_offset = va - vma->original_addr; // 计算起始地址对于文件的偏移量
+  ilock(vma->f->ip);
+  if (file_offset > vma->f->ip->size) { // 如果文件偏移量已超过文件大小，直接判错
+    iunlock(vma->f->ip);
+    kfree((void *)pa);
+    printf("invalid file offset\n");
+    return -1;
+  }
+  if (readi(vma->f->ip, 0, pa, file_offset, PGSIZE) < 0) {// 拷贝文件里一页的内容到物理页
+    iunlock(vma->f->ip);
+    kfree((void *)pa);
+    printf("read inode failed\n");
+    return -1;
+  }
+  iunlock(vma->f->ip);
+
+  int perm = PTE_V | PTE_U;
+  if (vma->prot & PROT_READ) {
+    perm |= PTE_R;
+  }
+  if (vma->prot & PROT_WRITE) {
+    perm |= PTE_W;
+  }
+  if (vma->prot & PROT_EXEC) {
+    perm |= PTE_X;
+  }
+
+  kvmmap(p->pagetable, va, pa, PGSIZE, perm); // 映射va和pa
+//  printf("=>=> handler: original addr: %p, va: %p, addr: %p\n", vma->original_addr, va, addr);
+  return 0;
+}
+
+int munmap(uint64 addr, int len) {
+//  printf("<= munmap addr %p, npages %d\n", addr, len/PGSIZE);
+
+  if (addr %PGSIZE != 0 || len % PGSIZE != 0) {
+    printf("munmap: invalid len: addr: %p, len: %d\n", addr, len);
+    return -1;
+  }
+
+  int i = 0;
+  struct proc* p = myproc();
+  for (; i < NVMA; i++) { // 查找对应的映射
+    if (p->vmatable[i].used && addr >= p->vmatable[i].addr && addr < p->vmatable[i].addr + p->vmatable[i].len) {
+      break;
+    }
+  }
+  if (i == NVMA) {
+    printf("mapping not found\n");
+    return -1;
+  }
+  struct vma* vma = &p->vmatable[i];
+//  printf("original addr: %p, addr: %p, vma len: %d, unmap len:%d\n", vma->original_addr, addr, vma->len, len);
+  if (len > vma->len) {
+    printf("len %d > vma->len %d\n", len, vma->len);
+    return -1;
+  }
+  if (vma->prot & PROT_WRITE && vma->flags & MAP_SHARED) {// 共享页的情况要把脏页写会文件
+    pte_t *pte;
+    for (int i = addr; i < addr + len; i += PGSIZE) { // 遍历要取消映射的范围
+      pte = walk(p->pagetable, i, 0);
+      if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) { // 没有被读写过的页还没有被映射过，不需要解除
+        continue;
+      }
+      if (*pte & PTE_D) { // 判断每一页是否是脏页
+        begin_op();
+        ilock(vma->f->ip);
+        if (writei(vma->f->ip, 1, i, i - vma->original_addr, PGSIZE) != PGSIZE) {
+          iunlock(vma->f->ip);
+          end_op();
+          printf("write failed\n");
+          return -1;
+        }
+        iunlock(vma->f->ip);
+        end_op();
+      }
+      uvmunmap(p->pagetable, i, 1, 1); // 解除这一页的映射
+    }
+  }
+
+  if (addr == vma->addr) { // 解除映射区域与开头对齐的情况
+    vma->addr += len;
+  }
+  vma->len -= len; // 减小映射范围
+
+  if (vma->len == 0) { // 这一段vma完全被释放
+    fileclose(vma->f);
+    vma->used = 0;
+  }
+
+  return 0;
+}
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -53,6 +230,7 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
+      memset(&p->vmatable, 0, sizeof(p->vmatable));
   }
 }
 
@@ -140,6 +318,9 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+
+  // init vma table
+  memset(&p->vmatable, 0, sizeof(p->vmatable));
 
   return p;
 }
@@ -287,6 +468,16 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+
+  // Copy vma table from parent to child
+  memmove(&np->vmatable, &p->vmatable, sizeof(p->vmatable));
+
+  // increment reference counts on vma file descriptors.
+  for (int i = 0; i < NVMA; i++ ) {
+    if (np->vmatable[i].used) {
+      filedup(np->vmatable[i].f);
+    }
+  }
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -344,6 +535,12 @@ exit(int status)
   if(p == initproc)
     panic("init exiting");
 
+  // deference vma
+  for (int i = 0; i < NVMA; i++ ) {
+    if (p->vmatable[i].used) {
+      munmap(p->vmatable[i].addr, p->vmatable[i].len);
+    }
+  }
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){

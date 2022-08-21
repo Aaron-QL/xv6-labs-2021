@@ -37,6 +37,8 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  int cause = r_scause();
+  int fault_val = r_stval();
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -50,7 +52,7 @@ usertrap(void)
   // save user program counter.
   p->trapframe->epc = r_sepc();
   
-  if(r_scause() == 8){
+  if(cause == 8){
     // system call
 
     if(p->killed)
@@ -67,9 +69,17 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if (cause == 13 || cause == 15) { // load/store 指令异常
+    if (fault_val >= PGROUNDUP(p->trapframe->sp) && fault_val < p->sz) { // 判断访问地址是否在堆内
+      if (mmap_handler(fault_val, cause) != 0) { // 处理映射异常
+        p->killed = 1;
+      }
+    } else {
+      p->killed = 1;
+    }
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    printf("usertrap(): unexpected scause %p pid=%d\n", cause, p->pid);
+    printf("            sepc=%p stval=%p\n", r_sepc(), fault_val);
     p->killed = 1;
   }
 

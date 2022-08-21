@@ -7,6 +7,29 @@
 #include "spinlock.h"
 #include "proc.h"
 
+uint64 sys_mmap(void)
+{
+  struct file* f;
+  int len, prot, flags, fd, offset;
+  if (argint(1, &len) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0 || argint(5, &offset) < 0) {
+    printf("sys_mmap: invalid argument\n");
+    return -1;
+  }
+
+  return mmap(0, len, prot, flags, fd, offset, f);
+}
+
+uint64 sys_munmap(void)
+{
+  uint64 addr;
+  int len;
+  if (argaddr(0, &addr) < 0 || argint(1, &len) < 0) {
+    printf("sys_munmap: invalid argument\n");
+  }
+
+  return munmap(addr, len);
+}
+
 uint64
 sys_exit(void)
 {
